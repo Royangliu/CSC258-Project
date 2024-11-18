@@ -25,8 +25,11 @@ ADDR_DSPL:
 # The address of the keyboard. Don't forget to connect it!
 ADDR_KBRD:
     .word 0xffff0000
+    
 BTTL_COLOUR: 
     .word 0xa8a8a8
+BTTL_0_0_ADDR:
+    .word 0x100085B0 #(y down 12, x right 13 from ADDR_DSPL)
 RED_VIRUS_COLOUR:
     .word 0xff1111
 BLUE_VIRUS_COLOUR:
@@ -38,18 +41,20 @@ YELLOW_VIRUS_COLOUR:
 # Mutable Data
 ##############################################################################
 
-capsule_isrotated: .word 0
-
 virus_number: .word 4
 virus_min_x: .word 0
 virus_min_y: .word 8
 virus_max_x: .word 7
 virus_max_y: .word 15
 
-bottle_spaces: .word 0:512
+bottle_spaces: .word 0:128
 
-current_capsule_colour: .word 0
-side_capsule_colour: .word 0
+capsule_isrotated: .word 0
+current_capsule_colour_1: .word 0 #when creating new capsule, set these colours according to the random number generated (6 total types)
+current_capsule_colour_2: .word 0
+
+side_capsule_colour_1: .word 0
+side_capsule_colour_2: .word 0
 
 
 ##############################################################################
@@ -61,38 +66,37 @@ side_capsule_colour: .word 0
     # Run the game.
 main:
     # Initialize the game
+    
+    lw $s0, ADDR_KBRD       # saves address of keyboard
+    
     jal draw_bottle
     jal spawn_viruses
+    jal draw_bottle_spaces
+    jal create_side_capsule
+    jal display_side_capsule
     
     # Wait a bit before starting
     li $v0, 32
 	li $a0, 2000
 	syscall
     
-    jal create_side_capsule
-    jal spawn_capsule
-    
-    lw $s0, ADDR_KBRD               # $s0 = base address for keyboard
+    # jal spawn_capsule
     
 game_loop:
-    # $s1
-    
-
-
     # 1a. Check if key has been pressed
     lw $t0, 0($s0)                  # Load first word from keyboard
     beq $t0, 1, keyboard_input      # If first word 1, key is pressed
     
-    j check_collisions
+    # j check_collisions
     
     # 1b. Check which key has been pressed
     keyboard_input:                     # A key is pressed
         lw $a0, 4($t1)                  # Load second word from keyboard
         beq $a0, 0x71, respond_to_Q     # Check if the key q was pressed
-        beq $a0, 0x71, respond_to_W
-        beq $a0, 0x71, respond_to_A
-        beq $a0, 0x71, respond_to_S
-        beq $a0, 0x71, respond_to_D
+        # beq $a0, 0x71, respond_to_W
+        # beq $a0, 0x71, respond_to_A
+        # beq $a0, 0x71, respond_to_S
+        # beq $a0, 0x71, respond_to_D
     
         li $v0, 1                       # ask system to print $a0
         syscall
@@ -122,7 +126,7 @@ game_loop:
 	lw $t0, 0($sp)
 	addi $sp, $sp, 4
 	
-	jal update_screen
+	# jal update_screen
 	
 	# 4. Sleep
 	li $v0, 32
@@ -236,7 +240,7 @@ spawn_viruses:
     lw $t1, virus_number
 
     generate_random_virus:
-        # $t7: virus colour
+        # $t7: virus colour in hex
         # $a0: virus colour (0=red, 1=blue, 2=yellow)
         beq $t0, $t1, quit_spawn_viruses # quits function when all viruses are made
         li $v0, 42
@@ -244,38 +248,69 @@ spawn_viruses:
         li $a1, 3
         syscall 
         
-        beq $a0, 0, generate_red_virus
-        beq $a0, 1, generate_blue_virus
-        beq $a0, 2, generate_yellow_virus
+        beq $a0, 0, red_virus
+        beq $a0, 1, blue_virus
+        beq $a0, 2, yellow_virus
         
-        generate_red_virus:
-            # $t
-            # $t8: virus x position
-            # $t9: virus y position
+        red_virus:
+            lw $t7, RED_VIRUS_COLOUR
+            j generate_virus
+        
+        blue_virus:
+            lw $t7, BLUE_VIRUS_COLOUR
+            j generate_virus
+        
+        yellow_virus:
+            lw $t7, YELLOW_VIRUS_COLOUR
+            j generate_virus
+            
+        generate_virus:
+            # $t8: x coords for virus
+            # $t9: y coords for virus
+            # $t2: the contents in address pointed from the generated x and y values 
             
             li $v0, 42
             li $a0, 0
-            li $a1, 7
+            li $a1, 8
             syscall 
-            lw $t8, 0($a0) # stores random x value
+            add $t8, $zero, $a0 # stores random x value
             
             li $v0, 42
             li $a0, 0
-            li $a1, 15
+            li $a1, 8
             syscall 
-            lw $t9, 0($a0) # stores random y value
+            addi $a0, $a0, 8    # adds 8 so y value is in the bottom half of the bottle
+            add $t9, $zero, $a0 # stores random y value
             
+            addi $sp, $sp, -4
+            sw $t0, 0($sp)
+            addi $sp, $sp, -4
+            sw $ra, 0($sp)
+            addi $sp, $sp, -4
+            sw $a0, 0($sp)
+            addi $sp, $sp, -4
+            sw $a1, 0($sp)
             
+            add $a0, $zero, $t8
+            add $a1, $zero, $t9
+            jal get_x_y_coordinate_storage_address # $v0 contains memory address to given x and y coords
+            
+            lw $a1, 0($sp)
+            addi $sp, $sp, 4
+            lw $a0, 0($sp)
+            addi $sp, $sp, 4
+            lw $ra, 0($sp)
+            addi $sp, $sp, 4
+            lw $t0, 0($sp)
+            addi $sp, $sp, 4
+            
+            lw $t2, 0($v0)
+            bne $t2, 0, generate_virus
+            
+            sw $t7, 0($v0)
             
             j finish_virus
         
-        generate_blue_virus:
-        
-        j finish_virus
-        
-        generate_yellow_virus:
-        
-        j finish_virus
         
         finish_virus:
             addi $t0, $t0, 1
@@ -288,5 +323,57 @@ respond_to_Q:
 	li $v0, 10                      # Quit gracefully
 	syscall
 	
-get_x_y_coordinate_address:
+get_x_y_coordinate_storage_address:
+    # returns the memory address in bottle_spaces based on x and y values
+    # $a0: x coordinate relative to bottle
+    # $a1: y coordinate relative to bottle
+    # $t0: temp register for calculations
+    # $v0: output containing the storage memory address for the given x and y coordinates
+    la $v0, bottle_spaces
     
+    li $t0, 4
+    mult $a0, $t0
+    mflo $t0
+    add $v0, $v0, $t0
+    
+    li $t0, 32
+    mult $a1, $t0
+    mflo $t0
+    add $v0, $v0, $t0
+    
+    jr $ra
+    
+draw_bottle_spaces:
+    # Draws the values stored in bottle_storage onto the bitmap
+    # $t0: bitmap address being painted
+    # $t1: bottle_spaces address being read
+    # $t9: bottle_spaces value being read
+    # $t2: x counter
+    # $t3: y counter
+    lw $t0, BTTL_0_0_ADDR
+    la $t1, bottle_spaces
+
+    li $t3, 0
+    y_loop:
+        beq $t3, 16, quit_draw_bottle_spaces
+        li $t2, 0
+        x_loop:
+            beq $t2, 8, end_x_loop
+            
+            # Draws the current points in memory and incremement both addresses to the next value
+            lw $t9, 0($t1)
+            sw $t9, 0($t0)
+            addi $t2, $t2, 1
+            addi $t0, $t0, 4
+            addi $t1, $t1, 4
+            
+            j x_loop
+            
+        end_x_loop:
+            addi $t3, $t3, 1
+            addi $t0, $t0, -32 # moves the memory address for the bit map to the beginning of the row
+            addi $t0, $t0, 128 # moves the memory address for the bit map to the beginning of the next row
+            j y_loop
+            
+    quit_draw_bottle_spaces:
+        jr $ra
