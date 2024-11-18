@@ -377,3 +377,6 @@ draw_bottle_spaces:
             
     quit_draw_bottle_spaces:
         jr $ra
+
+create_side_capsule:
+    # sets the side_capsule_colour .words into new colors
