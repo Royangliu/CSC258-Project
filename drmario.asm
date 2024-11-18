@@ -37,6 +37,9 @@ BLUE_VIRUS_COLOUR:
 YELLOW_VIRUS_COLOUR:
     .word 0xffff11
 
+CAPSULE_SPAWN_LOCATION:
+
+
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -72,26 +75,39 @@ main:
     jal draw_bottle
     jal spawn_viruses
     jal draw_bottle_spaces
-    jal create_side_capsule
-    jal display_side_capsule
+    # jal create_side_capsule
+    # jal display_side_capsule
+    
+    #TEMP FOR MILESTONE 1
+    li $a0 2
+    lw $t0, BTTL_0_0_ADDR
+    lw $t1, BLUE_VIRUS_COLOUR
+    addi $t0, $t0, 12
+    jal draw_horizontal_line
+    
+    li $a0 2
+    lw $t0, BTTL_0_0_ADDR
+    lw $t1, YELLOW_VIRUS_COLOUR
+    addi $t0, $t0, 48
+    addi $t0, $t0, -256
+    jal draw_verticle_line
+    
     
     # Wait a bit before starting
     li $v0, 32
 	li $a0, 2000
 	syscall
     
-    # jal spawn_capsule
-    
 game_loop:
+    # jal spawn_capsule
     # 1a. Check if key has been pressed
     lw $t0, 0($s0)                  # Load first word from keyboard
     beq $t0, 1, keyboard_input      # If first word 1, key is pressed
-    
-    # j check_collisions
+    j game_check_collisions
     
     # 1b. Check which key has been pressed
     keyboard_input:                     # A key is pressed
-        lw $a0, 4($t1)                  # Load second word from keyboard
+        lw $a0, 4($s0)                  # Load second word from keyboard
         beq $a0, 0x71, respond_to_Q     # Check if the key q was pressed
         # beq $a0, 0x71, respond_to_W
         # beq $a0, 0x71, respond_to_A
@@ -100,6 +116,8 @@ game_loop:
     
         li $v0, 1                       # ask system to print $a0
         syscall
+    
+    game_check_collisions:
     
     # 2a. Check for collisions
     
@@ -136,10 +154,9 @@ game_loop:
     # 5. Go back to Step 1
     j game_loop
 
-
-
-
-
+respond_to_Q:
+	li $v0, 10                      # Quit gracefully
+	syscall
 
 #Draws the borders of the bottle
 draw_bottle:
@@ -318,10 +335,6 @@ spawn_viruses:
     
     quit_spawn_viruses:
         jr $ra
-
-respond_to_Q:
-	li $v0, 10                      # Quit gracefully
-	syscall
 	
 get_x_y_coordinate_storage_address:
     # returns the memory address in bottle_spaces based on x and y values
