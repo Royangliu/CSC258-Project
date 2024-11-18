@@ -75,6 +75,10 @@ main:
     lw $s0, ADDR_KBRD               # $s0 = base address for keyboard
     
 game_loop:
+    # $s1
+    
+
+
     # 1a. Check if key has been pressed
     lw $t0, 0($s0)                  # Load first word from keyboard
     beq $t0, 1, keyboard_input      # If first word 1, key is pressed
@@ -227,18 +231,14 @@ draw_horizontal_line:
 
 spawn_viruses:
     # $t0: counter for viruses made
-    # $t1: virus nuumber 
-    # $t0: 
-    # $t0: 
+    # $t1: total virus number
     li $t0, 0
     lw $t1, virus_number
 
     generate_random_virus:
         # $t7: virus colour
-        # $t8: virus x position
-        # $t9: virus y position
         # $a0: virus colour (0=red, 1=blue, 2=yellow)
-        beq $t0, $t1, quit_spawn_viruses # quits function when 3 viruses are made
+        beq $t0, $t1, quit_spawn_viruses # quits function when all viruses are made
         li $v0, 42
         li $a0, 0
         li $a1, 3
@@ -249,11 +249,24 @@ spawn_viruses:
         beq $a0, 2, generate_yellow_virus
         
         generate_red_virus:
+            # $t
+            # $t8: virus x position
+            # $t9: virus y position
             
             li $v0, 42
             li $a0, 0
-            li $a1, 31
+            li $a1, 7
             syscall 
+            lw $t8, 0($a0) # stores random x value
+            
+            li $v0, 42
+            li $a0, 0
+            li $a1, 15
+            syscall 
+            lw $t9, 0($a0) # stores random y value
+            
+            
+            
             j finish_virus
         
         generate_blue_virus:
@@ -275,3 +288,5 @@ respond_to_Q:
 	li $v0, 10                      # Quit gracefully
 	syscall
 	
+get_x_y_coordinate_address:
+    
