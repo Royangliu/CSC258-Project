@@ -2,13 +2,20 @@ Hard:
 music - make a counter in the game loop
 
 Easy:
-side capsule
+
 save capsule
-pause screen
-viruses and dr mario on sides
-gravity - doesn't work on viruses? maybe don't do lmao
-disappearing viruses
-next_level
+
+pause screen - done
+
+gravity - done
+increase gravity over time - done
+next capsule - done
+
+retry screen - done
+
+panel of capsules - done
+
+easy medium hard selection - make starting screen that takes input e,m,h - done
 
 
 
