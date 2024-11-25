@@ -3,7 +3,7 @@ music - make a counter in the game loop
 
 Easy:
 
-save capsule
+save capsule - done
 
 pause screen - done
 
