@@ -74,6 +74,7 @@ virus_max_y: .word 15
 
 bottle_spaces: .word 0:128  # initializes 128 bytes as 0 for storage
 delete_spaces: .word 0:128  # initializes 128 bytes as 0; if 1, then it is being marked for deletion
+cap_connected_spaces: .word 0:128   # initializes 128 bytes as 0; if 1, then the cap is connected to the right; if 2, then the cap is connected to the left
 
 current_capsule_isrotated: .word 0
 current_capsule_1_x: .word 0
@@ -109,7 +110,6 @@ main:
     # $s3: gravity counter
     # $s4: gravity increase counter max
     # $s5: gravity increase counter
-    # $s6: difficulty (0=easy, 1=medium, 2=hard)
     
     lw $s0, ADDR_KBRD       # saves address of keyboard
     
@@ -179,6 +179,25 @@ main:
         
         jal clear_bottle_spaces
         jal clear_delete_spaces
+        jal clear_cap_connected_spaces
+        
+        # li $a0, 0     #for testing 
+        # li $a1, 15
+        # lw $a2, BLUE_CAPSULE_VAL
+        # jal place_obj_bottle_space
+        # li $a0, 0
+        # li $a1, 14
+        # lw $a2, BLUE_CAPSULE_VAL
+        # jal place_obj_bottle_space
+        # li $a0, 0
+        # li $a1, 13
+        # lw $a2, BLUE_CAPSULE_VAL
+        # jal place_obj_bottle_space
+        # li $a0, 0
+        # li $a1, 11
+        # lw $a2, BLUE_VIRUS_VAL
+        # jal place_obj_bottle_space
+        
         jal draw_side_capsule_panel
         jal draw_bottle
         jal spawn_viruses
@@ -191,13 +210,17 @@ main:
     	li $a0, 2000
     	syscall
         
-        la $a0, bottle_spaces
-        li $v0, 1                       # ask system to print $a0 FOR TESTING
-        syscall
+        # la $a0, bottle_spaces
+        # li $v0, 1                       # ask system to print $a0 FOR TESTING
+        # syscall
         
-        la $a0, delete_spaces
-        li $v0, 1                       # ask system to print $a0 FOR TESTING
-        syscall
+        # la $a0, delete_spaces
+        # li $v0, 1                       # ask system to print $a0 FOR TESTING
+        # syscall
+        
+        # la $a0, cap_connected_spaces
+        # li $v0, 1                       # ask system to print $a0 FOR TESTING
+        # syscall
         
         j start_new_capsule
     
@@ -243,21 +266,15 @@ game_loop:
         # increment gravity counter
         addi $s3, $s3, 1
         addi $s5, $s5, 1
-        
-        # 2a. Check for collisions
-        
-        
-    	# 2b. Update locations (capsules)
     	
-    	
-    	# 3. Draw the screen
+    	# Draw the screen
     	jal draw_bottle_spaces
     	jal check_if_win
     	
-    	# 4. Sleep (set to ~60fps)
+    	# Sleep (set to ~60fps)
     	jal sleep_60fps
     
-        # 5. Go back to Step 1
+        # Go back to input loop
         j input_loop
     
     pause_game:
@@ -275,6 +292,7 @@ game_loop:
         pause_input:
             lw $a0, 4($s0)      # Load second word from keyboard
             beq $a0, 112, quit_pause
+            beq $a0, 0x71, quit_game
             j pause_loop
         
         quit_pause:
@@ -368,12 +386,41 @@ execute_capsule_gravity:
 
 
 place_capsule:
-    # First, checks if the capsules can clear any lines around it. Then, checks if there are places to start a new capsule and loses if not. if there is space, does everything to start a new capsule
+    # First, marks the spots of the capsules as connected if not rotated.
+    # Checks if the capsules can clear any lines around it. Then, checks if there are places to start a new capsule and loses if not. if there is space, does everything to start a new capsule
     addi $sp, $sp, -4
     sw $ra, 0($sp)
+    
+    # marks the caps as connected in cap_connected_spaces
+    lw $t0, current_capsule_isrotated
+    beq $t0, 1, skip_marking_connected
+    lw $t0, current_capsule_value_1
+    beq $t0, 0, skip_marking_connected
+    lw $a0, current_capsule_1_x
+    lw $a1, current_capsule_1_y
+    jal mark_x_y_connected_to_right
+    lw $a0, current_capsule_2_x
+    lw $a1, current_capsule_2_y
+    jal mark_x_y_connected_to_left
+    
+    skip_marking_connected:
+    
     jal check_clear_lines
     jal delete_at_marked
     jal clear_delete_spaces
+    jal draw_bottle_spaces # for testing
+    
+    check_floating_caps_loop:
+        jal check_for_floating_caps # $v0 is 1 if something moved down
+        addi $sp, $sp, -4
+        sw $v0, 0($sp)
+        jal check_clear_lines
+        jal delete_at_marked
+        jal clear_delete_spaces
+        jal draw_bottle_spaces  # for testing
+        lw $v0, 0($sp)
+        addi $sp, $sp, 4
+        beq $v0, 1, check_floating_caps_loop
     
     jal check_if_lose
     jal move_side_capsule_to_current
@@ -730,10 +777,10 @@ move_down:
         j game_check_collisions
     
     check_collide_down:
-    # returns if the left spot of the given x and y coordinates is empty
-    # $v0: 0 if there is nothing, 1 if there is something
-    # $a0: x coordinate given (must be 1 or greater)
-    # $a1: y coordinate given
+    # returns the bottom spot of the given x and y coordinates
+    # $v0: the value of the spot below the x and y
+    # $a0: x coordinate given
+    # $a1: y coordinate given (must be 14 or less)
         addi $sp, $sp, -4
         sw $ra, 0($sp)
     	jal get_x_y_coordinate_storage_address
@@ -2175,6 +2222,12 @@ mark_x_y_delete:
     li $t0, 1
     sw $t0, 0($t1)
     
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal mark_x_y_unconnected
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
     jr $ra
     
 
@@ -2243,4 +2296,345 @@ clear_delete_spaces:
         j clear_delete_spaces_loop
     
     quit_clear_delete_spaces:
+        jr $ra
+        
+        
+mark_x_y_connected_to_right:
+    # marks the spot on the cap_connected_spaces to 1
+    # $a0: x
+    # $a1: y
+    # $t0: temp for calculations
+    # $t1: holds the mem address for the spot being marked
+    la $t1, cap_connected_spaces
+    
+    li $t0, 4
+    mult $a0, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    li $t0, 32
+    mult $a1, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    li $t0, 1
+    sw $t0, 0($t1)
+    
+    jr $ra
+    
+    
+mark_x_y_connected_to_left:
+    # marks the spot on the cap_connected_spaces to 2
+    # $a0: x
+    # $a1: y
+    # $t0: temp for calculations
+    # $t1: holds the mem address for the spot being marked
+    la $t1, cap_connected_spaces
+    
+    li $t0, 4
+    mult $a0, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    li $t0, 32
+    mult $a1, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    li $t0, 2
+    sw $t0, 0($t1)
+    
+    jr $ra
+    
+    
+mark_x_y_unconnected:
+    # marks the spot on the cap_connected_spaces to 0
+    # $a0: x
+    # $a1: y
+    # $t0: temp for calculations
+    # $t1: holds the mem address for the spot being deleted
+    la $t1, cap_connected_spaces
+    
+    li $t0, 4
+    mult $a0, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    li $t0, 32
+    mult $a1, $t0
+    mflo $t0
+    add $t1, $t1, $t0
+    
+    lw $t0, 0($t1)
+    beq $t0, 1, case_unmark_right
+    beq $t0, 2, case_unmark_left
+    
+    jr $ra
+    
+    case_unmark_right:
+        sw $zero, 0($t1)
+        sw $zero, 4($t1)
+        jr $ra
+        
+    case_unmark_left:
+        sw $zero, 0($t1)
+        sw $zero, -4($t1)
+        jr $ra
+    
+    
+get_connectedness_x_y:
+    # gets the connected value at specified x and y
+    # $a0: x
+    # $a1: y
+    # $t0: temp for calculations
+    # $v0: contains the value at the x and y
+    la $v1, cap_connected_spaces
+    
+    li $t0, 4
+    mult $a0, $t0
+    mflo $t0
+    add $v1, $v1, $t0
+    
+    li $t0, 32
+    mult $a1, $t0
+    mflo $t0
+    add $v1, $v1, $t0
+    
+    lw $v0, 0($v1)
+    
+    jr $ra
+    
+    
+clear_cap_connected_spaces:
+    # clears cap_connected_spaces
+    # $t0: delete spaces mem address
+    # $t1: mem address counter
+    la $t0, cap_connected_spaces
+    li $t1, 0
+    
+    clear_cap_connected_loop:
+        beq $t1, 128, quit_clear_cap_connected_spaces
+        
+        sw $zero, 0($t0)
+        addi $t1, $t1, 1
+        addi $t0, $t0, 4
+        
+        j clear_cap_connected_loop
+    
+    quit_clear_cap_connected_spaces:
+        jr $ra
+        
+
+check_for_floating_caps:
+    # $a0: DO NOT INITIATE, x counter
+    # $a1: DO NOT INITIATE, y counter
+    # $t2: virus values used to compare to $t1
+    # $t9: temp holding 1 if something moved down
+    # $v0: at the end, contains 1 if something moved down
+    li $t9, 0
+    
+    li $a1, 0
+    check_for_floating_y_loop:
+        beq $a1, 15, quit_check_floating_caps
+        
+        li $a0, 0
+        check_for_floating_x_loop:
+            beq $a0, 8, quit_check_floating_x
+        
+            addi $sp, $sp, -4
+            sw $ra, 0($sp)
+            jal check_obj_bottle_space
+            lw $ra, 0($sp)
+            addi $sp, $sp, 4
+            
+            lw $t2, RED_VIRUS_VAL
+            beq $v0, $t2, skip_check_under
+            lw $t2, BLUE_VIRUS_VAL
+            beq $v0, $t2, skip_check_under
+            lw $t2, YELLOW_VIRUS_VAL
+            beq $v0, $t2, skip_check_under
+            beq $v0, 0, skip_check_under
+            
+            addi $sp, $sp, -4
+            sw $ra, 0($sp)
+            jal get_connectedness_x_y
+            lw $ra, 0($sp)
+            addi $sp, $sp, 4
+            
+            beq $v0, 0, case_check_unconnected_fall
+            beq $v0, 1, case_check_connected_fall
+            beq $v0, 2, skip_check_under
+            
+            case_check_unconnected_fall:
+                addi $sp, $sp, -4
+                sw $ra, 0($sp)
+                jal check_collide_down
+                lw $ra, 0($sp)
+                addi $sp, $sp, 4
+                
+                beq $v0, 0, do_unconnected_fall
+                j skip_check_under
+                
+                do_unconnected_fall:
+                    # move the value down once (don't need to change any connected values since its already 0)
+                    li $t9, 1
+                    
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal check_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    addi $sp, $sp, -4
+                    sw $v0, 0($sp)
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal delete_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    lw $v0, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    
+                    addi $a1, $a1, 1
+                    addi $a2, $v0, 0
+                    jal place_obj_bottle_space
+                    addi $a1, $a1, -1
+                    
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    j skip_check_under
+                    
+                
+            case_check_connected_fall:
+                addi $sp, $sp, -4
+                sw $ra, 0($sp)
+                jal check_collide_down
+                lw $ra, 0($sp)
+                addi $sp, $sp, 4
+                
+                bne $v0, 0, skip_check_under
+                
+                addi $sp, $sp, -4
+                sw $ra, 0($sp)
+                
+                addi $a0, $a0, 1
+                jal check_collide_down
+                addi $a0, $a0, -1
+                
+                lw $ra, 0($sp)
+                addi $sp, $sp, 4
+                
+                bne $v0, 0, skip_check_under
+                j do_connected_fall
+                
+                do_connected_fall:
+                    # move delete the value in bottle spaces one by one. then move the value in cap_connectedness one by one
+                    li $t9, 1
+                    
+                    # moves the first cap and its connected value down
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal check_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    addi $sp, $sp, -4
+                    sw $v0, 0($sp)
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal delete_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    lw $v0, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    addi $sp, $sp, -4
+                    sw $t1, 0($sp)
+                    jal mark_x_y_unconnected
+                    lw $t1, 0($sp)
+                    addi $sp, $sp, 4
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    addi $a1, $a1, 1
+                        addi $sp, $sp, -4
+                        sw $ra, 0($sp)
+                    addi $a2, $v0, 0
+                    jal place_obj_bottle_space
+                        lw $ra, 0($sp)
+                        addi $sp, $sp, 4
+                    
+                    
+                        addi $sp, $sp, -4
+                        sw $ra, 0($sp)
+                        addi $sp, $sp, -4
+                        sw $t1, 0($sp)
+                    jal mark_x_y_connected_to_right
+                        lw $t1, 0($sp)
+                        addi $sp, $sp, 4
+                        lw $ra, 0($sp)
+                        addi $sp, $sp, 4
+                    addi $a1, $a1, -1
+                    
+                    
+                    # moves the second cap and its connected value down
+                    addi $a0, $a0, 1 # moves the next x value
+                    
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal check_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    
+                    addi $sp, $sp, -4
+                    sw $v0, 0($sp)
+                    addi $sp, $sp, -4
+                    sw $ra, 0($sp)
+                    jal delete_obj_bottle_space
+                    lw $ra, 0($sp)
+                    addi $sp, $sp, 4
+                    lw $v0, 0($sp)
+                    addi $sp, $sp, 4
+                       
+                   addi $a1, $a1, 1
+                        addi $sp, $sp, -4
+                        sw $ra, 0($sp)
+                    addi $a2, $v0, 0
+                    jal place_obj_bottle_space
+                        lw $ra, 0($sp)
+                        addi $sp, $sp, 4
+                    
+                    
+                        addi $sp, $sp, -4
+                        sw $ra, 0($sp)
+                        addi $sp, $sp, -4
+                        sw $t1, 0($sp)
+                    jal mark_x_y_connected_to_left
+                        lw $t1, 0($sp)
+                        addi $sp, $sp, 4
+                        lw $ra, 0($sp)
+                        addi $sp, $sp, 4
+                    addi $a1, $a1, -1
+                    
+                    addi $a0, $a0, -1   # goes back to original x value
+                    
+            skip_check_under:        
+            
+            addi $a0, $a0, 1
+            j check_for_floating_x_loop
+        
+        quit_check_floating_x:
+        
+            addi $a1, $a1, 1
+            j check_for_floating_y_loop
+            
+    quit_check_floating_caps:
+        addi $v0, $t9, 0
         jr $ra
