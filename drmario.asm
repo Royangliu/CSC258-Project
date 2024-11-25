@@ -60,6 +60,8 @@ YELLOW_CAPSULE_COLOUR:
 
 SIDE_CAPSULE_ADDR_DSPL:
     .word 0x10008460
+SAVED_CAPSULE_ADDR_DSPL:
+    .word 0x10008960
     
 
 ##############################################################################
@@ -93,7 +95,7 @@ saved_capsule_value_2: .word 0
 
 gravity_max: .word 60  # gravity happens after this many input loops
 gravity_counter_max_min: .word 10 # the lowest the counter max can go
-gravity_increase_counter_max: .word 600 # number of input game loops for gravity_max to decrease by 10 (600 = once every 10s)
+gravity_increase_counter_max: .word 600 # number of input game loops for gravity_max to decrease by 1 (600 = once every 10s)
 
 ##############################################################################
 # Code
@@ -129,6 +131,7 @@ main:
             beq $t0, 101, set_easy
             beq $t0, 109, set_medium
             beq $t0, 104, set_hard
+            beq $t0, 0x71, quit_game
             
             j main_menu_loop
             
@@ -139,7 +142,7 @@ main:
             sw $t0, gravity_max
             li $t0, 60
             sw $t0, gravity_counter_max_min
-            li $t0, 1200
+            li $t0, 120
             sw $t0, gravity_increase_counter_max
             jal clear_screen
             j initialize_game
@@ -151,7 +154,7 @@ main:
             sw $t0, gravity_max
             li $t0, 30
             sw $t0, gravity_counter_max_min
-            li $t0, 800
+            li $t0, 80
             sw $t0, gravity_increase_counter_max
             jal clear_screen
             j initialize_game
@@ -161,9 +164,9 @@ main:
             sw $t0, virus_number
             li $t0, 40
             sw $t0, gravity_max
-            li $t0, 10
+            li $t0, 8
             sw $t0, gravity_counter_max_min
-            li $t0, 600
+            li $t0, 60
             sw $t0, gravity_increase_counter_max
             jal clear_screen
             j initialize_game
@@ -236,7 +239,7 @@ game_loop:
         
         increase_gravity:
             # decreases amount of loops for gravity to happen by 10
-            addi $s1, $s1, -10
+            addi $s1, $s1, -1
             j input_loop
         
     start_new_capsule:
@@ -261,6 +264,7 @@ game_loop:
             beq $a0, 115, move_down
             beq $a0, 119, rotate_capsule
             beq $a0, 112, pause_game
+            beq $a0, 99, save_capsule
     
     game_check_collisions:
         # increment gravity counter
@@ -277,6 +281,10 @@ game_loop:
         # Go back to input loop
         j input_loop
     
+    save_capsule:
+        jal swap_saved_capsule
+        j game_check_collisions
+        
     pause_game:
         lw $a0, ADDR_DSPL
         li $a1, 0xffffff
@@ -336,6 +344,109 @@ sleep_60fps:
 	syscall
 	
 	jr $ra
+
+swap_saved_capsule:
+    # swaps the current capsule with the saved capsule
+    # $t0: temp for transfering values
+    # $t1: current cap val 1
+    # $t2: current cap val 2
+    # $t3: saved cap val 1
+    # $t4: saved cap val 2
+    lw $t0, saved_capsule_value_1
+    beq $t0, 0, first_save_capsule
+    
+    lw $t1, current_capsule_value_1
+    lw $t2, current_capsule_value_2
+    lw $t3, saved_capsule_value_1
+    lw $t4, saved_capsule_value_2
+    
+    sw $t1, saved_capsule_value_1
+    sw $t2, saved_capsule_value_2
+    sw $t3, current_capsule_value_1
+    sw $t4, current_capsule_value_2
+
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal update_current_capsule_colour
+    jal draw_saved_capsule
+    jal draw_bottle_spaces
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+    jr $ra
+    
+    first_save_capsule:
+        lw $t0, current_capsule_value_1
+        sw $t0, saved_capsule_value_1
+        lw $t0, current_capsule_value_2
+        sw $t0, saved_capsule_value_2
+        
+        addi $sp, $sp, -4
+        sw $ra, 0($sp)
+        jal move_side_capsule_to_current
+        jal shift_side_capsules_up
+        
+        la $a3, side_capsule_values
+        addi $a3, $a3, 24   
+        jal create_one_side_capsule
+        
+        jal update_current_capsule_colour
+        jal draw_all_side_capsules
+        jal draw_saved_capsule
+        jal draw_bottle_spaces
+        lw $ra, 0($sp)
+        addi $sp, $sp, 4
+        
+        jr $ra
+        
+        
+draw_saved_capsule:
+    # draws the saved capsule
+    # $t0: saved capsule display mem address
+    # $t1: saved capsule val 1
+    # $t2: saved capsule val 2
+    lw $t0, SAVED_CAPSULE_ADDR_DSPL
+    lw $t1, saved_capsule_value_1
+    lw $t2, saved_capsule_value_2
+    
+    addi $a0, $t1, 0
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal values_to_colours   # gets the colour of the cap
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+    sw $v0, 0($t0)
+    
+    addi $a0, $t2, 0
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    jal values_to_colours   # gets the colour of the cap
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+    sw $v0, 4($t0)
+    
+    jr $ra
+ 
+
+update_current_capsule_colour:
+    # updates the values in bottle spaces to reflect ones in the mutable data
+    addi $sp, $sp, -4
+    sw $ra, 0($sp)
+    lw $a0, current_capsule_1_x
+    lw $a1, current_capsule_1_y
+    lw $a2, current_capsule_value_1
+    jal place_obj_bottle_space
+    
+    lw $a0, current_capsule_2_x
+    lw $a1, current_capsule_2_y
+    lw $a2, current_capsule_value_2
+    jal place_obj_bottle_space
+    lw $ra, 0($sp)
+    addi $sp, $sp, 4
+    
+    jr $ra
 
 execute_capsule_gravity:
     # checks if the capsule can be moved down. Places the current capsule if not
@@ -408,7 +519,6 @@ place_capsule:
     jal check_clear_lines
     jal delete_at_marked
     jal clear_delete_spaces
-    jal draw_bottle_spaces # for testing
     
     check_floating_caps_loop:
         jal check_for_floating_caps # $v0 is 1 if something moved down
@@ -417,7 +527,6 @@ place_capsule:
         jal check_clear_lines
         jal delete_at_marked
         jal clear_delete_spaces
-        jal draw_bottle_spaces  # for testing
         lw $v0, 0($sp)
         addi $sp, $sp, 4
         beq $v0, 1, check_floating_caps_loop
