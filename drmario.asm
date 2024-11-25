@@ -2,7 +2,6 @@
 # This file contains our implementation of Dr Mario.
 #
 # Student 1: Roy, 1010331062
-# Student 2: Name, Student Number (if applicable)
 #
 # We assert that the code submitted here is entirely our own 
 # creation, and will indicate otherwise when it is not.
@@ -10,8 +9,8 @@
 ######################## Bitmap Display Configuration ########################
 # - Unit width in pixels:       1
 # - Unit height in pixels:      1
-# - Display width in pixels:    64 ???
-# - Display height in pixels:   64 ???
+# - Display width in pixels:    32
+# - Display height in pixels:   32
 # - Base Address for Display:   0x10008000 ($gp)
 ##############################################################################
 
@@ -179,6 +178,10 @@ main:
         
         lw $s4, gravity_increase_counter_max     # saves gravity counter max
         addi $s5, $zero, 0      # sets gravity increase counter to 0
+        
+        li $t0, 0
+        sw $t0, saved_capsule_value_1
+        sw $t0, saved_capsule_value_2
         
         jal clear_bottle_spaces
         jal clear_delete_spaces
